@@ -1,0 +1,95 @@
+pipeline {
+    agent any
+
+    environment {
+        // Docker registry settings
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_USER     = 'your_docker_hub_username' // Change to user's registry username
+        IMAGE_TAG       = "${BUILD_NUMBER}"
+        REGISTRY_CRED   = 'docker-hub-credentials' // Jenkins credentials ID for Docker Hub
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code from Git repository...'
+                checkout scm
+            }
+        }
+
+        stage('Security & Syntax Lint') {
+            parallel {
+                stage('Lint Backend') {
+                    steps {
+                        echo 'Running Backend code quality checks...'
+                        sh 'node --check backend/src/server.js'
+                    }
+                }
+                stage('Lint Frontend') {
+                    steps {
+                        echo 'Checking Frontend project configuration...'
+                        sh 'test -f frontend/package.json'
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                echo 'Building Docker container images...'
+                sh "docker build -t ${DOCKER_USER}/college-backend:${IMAGE_TAG} ./backend"
+                sh "docker build -t ${DOCKER_USER}/college-frontend:${IMAGE_TAG} ./frontend"
+                sh "docker build -t ${DOCKER_USER}/college-nginx:${IMAGE_TAG} ./nginx"
+                
+                sh "docker tag ${DOCKER_USER}/college-backend:${IMAGE_TAG} ${DOCKER_USER}/college-backend:latest"
+                sh "docker tag ${DOCKER_USER}/college-frontend:${IMAGE_TAG} ${DOCKER_USER}/college-frontend:latest"
+                sh "docker tag ${DOCKER_USER}/college-nginx:${IMAGE_TAG} ${DOCKER_USER}/college-nginx:latest"
+            }
+        }
+
+        stage('Vulnerability Scan') {
+            steps {
+                echo 'Scanning built images for security vulnerabilities with Trivy...'
+                // Skip script fail on vulnerabilities for education, but logs them
+                sh "trivy image --severity HIGH,CRITICAL --light ${DOCKER_USER}/college-backend:${IMAGE_TAG} || true"
+            }
+        }
+
+        stage('Push to Registry') {
+            steps {
+                echo 'Logging in to Docker Hub and pushing images...'
+                withCredentials([usernamePassword(credentialsId: "${REGISTRY_CRED}", usernameVariable: 'HUB_USER', passwordVariable: 'HUB_PASS')]) {
+                    sh "echo ${HUB_PASS} | docker login -u ${HUB_USER} --password-stdin"
+                    sh "docker push ${DOCKER_USER}/college-backend:${IMAGE_TAG}"
+                    sh "docker push ${DOCKER_USER}/college-frontend:${IMAGE_TAG}"
+                    sh "docker push ${DOCKER_USER}/college-nginx:${IMAGE_TAG}"
+                    
+                    sh "docker push ${DOCKER_USER}/college-backend:latest"
+                    sh "docker push ${DOCKER_USER}/college-frontend:latest"
+                    sh "docker push ${DOCKER_USER}/college-nginx:latest"
+                }
+            }
+        }
+
+        stage('Local Deploy') {
+            steps {
+                echo 'Deploying application locally using host Docker socket...'
+                // Redeploys the stack on localhost
+                sh """
+                    # Pull and restart containers locally
+                    docker compose down
+                    docker compose up -d --remove-orphans
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "CI/CD Pipeline succeeded! Academix Build #${BUILD_NUMBER} deployed locally."
+        }
+        failure {
+            echo "CI/CD Pipeline failed at some stage. Check Jenkins console logs."
+        }
+    }
+}

@@ -1,0 +1,29 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+
+# Build outputs
+dist/
+build/
+out/
+
+# IDE / Editor config
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+.DS_Store
+
+# Docker persistent volume mounts (Local Monitoring & DB storage)
+mysql_data/
+mysql_prod_data/
+prometheus_data/
+prometheus_prod_data/
+grafana_data/
+grafana_prod_data/

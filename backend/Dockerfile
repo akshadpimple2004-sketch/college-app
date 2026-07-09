@@ -11,7 +11,7 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 
 # Install only production dependencies (clean install)
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copy application source code
 COPY src/ ./src/
